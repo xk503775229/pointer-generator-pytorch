@@ -4,8 +4,10 @@ from __future__ import unicode_literals, print_function, division
 
 import sys
 
-reload(sys)
-sys.setdefaultencoding('utf8')
+# reload(sys)
+# sys.setdefaultencoding('utf8')
+import imp
+imp.reload(sys)
 
 import os
 import time
@@ -83,28 +85,54 @@ class BeamSearch(object):
 
             # Remove the [STOP] token from decoded_words, if necessary
             try:
-                fst_stop_idx = decoded_words.index(data.STOP_DECODING)
+                fst_stop_idx = decoded_words.index(data.MARK_EOS)
                 decoded_words = decoded_words[:fst_stop_idx]
             except ValueError:
                 decoded_words = decoded_words
 
             original_abstract_sents = batch.original_abstracts_sents[0]
+            original_article = batch.original_articles[0]
 
-            write_for_rouge(original_abstract_sents, decoded_words, counter,
-                            self._rouge_ref_dir, self._rouge_dec_dir)
+            # 英文
+            # write_for_rouge(original_abstract_sents, decoded_words, counter,
+            #                 self._rouge_ref_dir, self._rouge_dec_dir)
+            # 中文
+            self.write_result(original_article, original_abstract_sents,
+                    decoded_words, counter)
             counter += 1
-            if counter % 1000 == 0:
-                print('%d example in %d sec'%(counter, time.time() - start))
-                start = time.time()
+        #     if counter % 1000 == 0:
+        #         print('%d example in %d sec'%(counter, time.time() - start))
+        #         start = time.time()
 
             batch = self.batcher.next_batch()
 
-        print("Decoder has finished reading dataset for single_pass.")
-        print("Now starting ROUGE eval...")
-        results_dict = rouge_eval(self._rouge_ref_dir, self._rouge_dec_dir)
-        rouge_log(results_dict, self._decode_dir)
+        # print("Decoder has finished reading dataset for single_pass.")
+        # print("Now starting ROUGE eval...")
+        # results_dict = rouge_eval(self._rouge_ref_dir, self._rouge_dec_dir)
+        # rouge_log(results_dict, self._decode_dir)
 
+    def write_result(self, original_title, reference_summarization,
+                    decoded_words, ex_index):
+        """
+        Write output to file.
 
+        Args:
+            reference_sents: list of strings
+            decoded_words: list of strings
+            ex_index: int, the index with which to label the files
+        """
+        summarization = ''.join(decoded_words)
+
+        # Write to file
+        result_file = os.path.join(self._decode_dir, "result.txt")
+
+        with open(result_file, 'w') as f:
+            f.write(
+                original_title + '\t\t' +
+                reference_summarization + '\t\t' +
+                summarization + "\n")
+
+        print("Wrote example %i to file" % ex_index)
     def beam_search(self, batch):
         #batch should have only one example
         enc_batch, enc_padding_mask, enc_lens, enc_batch_extend_vocab, extra_zeros, c_t_0, coverage_t_0 = \
@@ -118,17 +146,17 @@ class BeamSearch(object):
         dec_c = dec_c.squeeze()
 
         #decoder batch preparation, it has beam_size example initially everything is repeated
-        beams = [Beam(tokens=[self.vocab.word2id(data.START_DECODING)],
+        beams = [Beam(tokens=[self.vocab.word2id(data.MARK_GO)],
                       log_probs=[0.0],
                       state=(dec_h[0], dec_c[0]),
                       context = c_t_0[0],
                       coverage=(coverage_t_0[0] if config.is_coverage else None))
-                 for _ in xrange(config.beam_size)]
+                 for _ in range(config.beam_size)]
         results = []
         steps = 0
         while steps < config.max_dec_steps and len(results) < config.beam_size:
             latest_tokens = [h.latest_token for h in beams]
-            latest_tokens = [t if t < self.vocab.size() else self.vocab.word2id(data.UNKNOWN_TOKEN) \
+            latest_tokens = [t if t < self.vocab.size() else self.vocab.word2id(data.MARK_UNK) \
                              for t in latest_tokens]
             y_t_1 = Variable(torch.LongTensor(latest_tokens))
             if use_cuda:
@@ -167,13 +195,13 @@ class BeamSearch(object):
 
             all_beams = []
             num_orig_beams = 1 if steps == 0 else len(beams)
-            for i in xrange(num_orig_beams):
+            for i in range(num_orig_beams):
                 h = beams[i]
                 state_i = (dec_h[i], dec_c[i])
                 context_i = c_t[i]
                 coverage_i = (coverage_t[i] if config.is_coverage else None)
 
-                for j in xrange(config.beam_size * 2):  # for each of the top 2*beam_size hyps:
+                for j in range(config.beam_size * 2):  # for each of the top 2*beam_size hyps:
                     new_beam = h.extend(token=topk_ids[i, j].item(),
                                    log_prob=topk_log_probs[i, j].item(),
                                    state=state_i,
@@ -183,7 +211,7 @@ class BeamSearch(object):
 
             beams = []
             for h in self.sort_beams(all_beams):
-                if h.latest_token == self.vocab.word2id(data.STOP_DECODING):
+                if h.latest_token == self.vocab.word2id(data.MARK_EOS):
                     if steps >= config.min_dec_steps:
                         results.append(h)
                 else:
