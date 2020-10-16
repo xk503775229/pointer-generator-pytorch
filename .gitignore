@@ -1,4 +1,4 @@
 *.pyc 
 *.bin
 log/*
-finished_files/.*
+finished_files/*
