@@ -3,21 +3,21 @@ import os
 root_dir = os.path.expanduser("~")
 
 #train_data_path = os.path.join(root_dir, "ptr_nw/cnn-dailymail-master/finished_files/train.bin")
-train_data_path = os.path.join(root_dir, "/home/kxiao/pointer_summarizer/finished_files/chunked/train_*")
-eval_data_path = os.path.join(root_dir, "/home/kxiao/pointer_summarizer/finished_files/val.bin")
-decode_data_path = os.path.join(root_dir, "/home/kxiao/pointer_summarizer/finished_files/test.bin")
-vocab_path = os.path.join(root_dir, "/home/kxiao/pointer_summarizer/finished_files/vocab")
-log_root = os.path.join(root_dir, "/home/kxiao/pointer_summarizer/log")
+train_data_path = os.path.join(root_dir, "/home/kxiao/kangjia/works_ex3/pointer_train_data.txt")
+eval_data_path = os.path.join(root_dir, "/home/kxiao/kangjia/works_ex3/pointer_test_data.txt")
+decode_data_path = os.path.join(root_dir, "/home/kxiao/kangjia/works_ex3/pointer_test_data.txt")
+vocab_path = os.path.join(root_dir, "/home/kxiao/kangjia/works_ex3/pointerVocab")
+log_root = os.path.join(root_dir, "/home/kxiao/pointer_generator_pytorch/log")
 
 # Hyperparameters
 hidden_dim= 256
 emb_dim= 128
-batch_size= 8
-max_enc_steps=400
-max_dec_steps=100
+batch_size= 32
+max_enc_steps=100
+max_dec_steps=30
 beam_size=4
-min_dec_steps=35
-vocab_size=50000
+min_dec_steps=1
+vocab_size=2600
 
 lr=0.15
 adagrad_init_acc=0.1

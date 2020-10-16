@@ -10,7 +10,8 @@ from model import Model
 from torch.nn.utils import clip_grad_norm_
 
 from torch.optim import Adagrad
-
+import sys
+sys.path.append('../data_util')
 from data_util import config
 from data_util.batcher import Batcher
 from data_util.data import Vocab
@@ -76,9 +77,13 @@ class Train(object):
     def train_one_batch(self, batch):
         enc_batch, enc_padding_mask, enc_lens, enc_batch_extend_vocab, extra_zeros, c_t_1, coverage = \
             get_input_from_batch(batch, use_cuda)
+        
+        print(enc_batch[:2])
         dec_batch, dec_padding_mask, max_dec_len, dec_lens_var, target_batch = \
             get_output_from_batch(batch, use_cuda)
-
+        print(dec_batch[:2])
+        print(target_batch[:2])
+        # exit()
         self.optimizer.zero_grad()
 
         encoder_outputs, encoder_feature, encoder_hidden = self.model.encoder(enc_batch, enc_lens)
@@ -89,8 +94,8 @@ class Train(object):
             y_t_1 = dec_batch[:, di]  # Teacher forcing
             final_dist, s_t_1,  c_t_1, attn_dist, p_gen, next_coverage = self.model.decoder(y_t_1, s_t_1,
                                                         encoder_outputs, encoder_feature, enc_padding_mask, c_t_1,
-                                                        extra_zeros, enc_batch_extend_vocab,
-                                                                           coverage, di)
+                                                        extra_zeros, enc_batch_extend_vocab, coverage, di)
+   
             target = target_batch[:, di]
             gold_probs = torch.gather(final_dist, 1, target.unsqueeze(1)).squeeze()
             step_loss = -torch.log(gold_probs + config.eps)
@@ -122,6 +127,7 @@ class Train(object):
         start = time.time()
         while iter < n_iters:
             batch = self.batcher.next_batch()
+            # print(batch.dec_batch)
             loss = self.train_one_batch(batch)
 
             running_avg_loss = calc_running_avg_loss(loss, running_avg_loss, self.summary_writer, iter)

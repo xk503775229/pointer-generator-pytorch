@@ -14,8 +14,7 @@ import time
 
 import torch
 from torch.autograd import Variable
-import sys
-sys.path.append('/home/kxiao/pointer_generator_pytorch/')
+
 from data_util.batcher import Batcher
 from data_util.data import Vocab
 from data_util import data, config
@@ -75,10 +74,7 @@ class BeamSearch(object):
         start = time.time()
         counter = 0
         batch = self.batcher.next_batch()
-
-        # 新的架构里写在训练的decode部分 
         while batch is not None:
-
             # Run beam search to get best Hypothesis
             best_summary = self.beam_search(batch)
 

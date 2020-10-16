@@ -4,7 +4,7 @@ import queue as Queue
 import time
 from random import shuffle
 from threading import Thread
-
+import glob
 import numpy as np
 import tensorflow as tf
 from . import config
@@ -18,22 +18,26 @@ class Example(object):
 
   def __init__(self, article, abstract_sentences, vocab):
     # Get ids of special tokens
-    start_decoding = vocab.word2id(data.START_DECODING)
-    stop_decoding = vocab.word2id(data.STOP_DECODING)
+    start_decoding = vocab.word2id(data.MARK_GO)
+    stop_decoding = vocab.word2id(data.MARK_EOS)
 
     # Process the article
+    article = ' '.join(article)
     article_words = article.split()
+    # print(article_words)
     if len(article_words) > config.max_enc_steps:
       article_words = article_words[:config.max_enc_steps]
     self.enc_len = len(article_words) # store the length after truncation but before padding
     self.enc_input = [vocab.word2id(w) for w in article_words] # list of word ids; OOVs are represented by the id for UNK token
-
+    # print(self.enc_input)
+    
     # Process the abstract
     abstract = ' '.join(abstract_sentences) # string
+    # print(abstract)
     # print(type(abstract))
     abstract_words = abstract.split() # list of strings
     abs_ids = [vocab.word2id(w) for w in abstract_words] # list of word ids; OOVs are represented by the id for UNK token
-
+    # print(abs_ids)
     # Get the decoder input sequence and target sequence
     self.dec_input, self.target = self.get_dec_inp_targ_seqs(abs_ids, config.max_dec_steps, start_decoding, stop_decoding)
     self.dec_len = len(self.dec_input)
@@ -41,10 +45,10 @@ class Example(object):
     # If using pointer-generator mode, we need to store some extra info
     if config.pointer_gen:
       # Store a version of the enc_input where in-article OOVs are represented by their temporary OOV id; also store the in-article OOVs words themselves
-      self.enc_input_extend_vocab, self.article_oovs = data.article2ids(article_words, vocab)
+      self.enc_input_extend_vocab, self.article_oovs = data.title2ids(article_words, vocab)
 
       # Get a verison of the reference summary where in-article OOVs are represented by their temporary article OOV id
-      abs_ids_extend_vocab = data.abstract2ids(abstract_words, vocab, self.article_oovs)
+      abs_ids_extend_vocab = data.summarization2ids(abstract_words, vocab, self.article_oovs)
 
       # Overwrite decoder target sequence so it uses the temp article OOV ids
       _, self.target = self.get_dec_inp_targ_seqs(abs_ids_extend_vocab, config.max_dec_steps, start_decoding, stop_decoding)
@@ -85,7 +89,7 @@ class Example(object):
 class Batch(object):
   def __init__(self, example_list, vocab, batch_size):
     self.batch_size = batch_size
-    self.pad_id = vocab.word2id(data.PAD_TOKEN) # id of the PAD token used to pad sequences
+    self.pad_id = vocab.word2id(data.MARK_PAD) # id of the PAD token used to pad sequences
     self.init_encoder_seq(example_list) # initialize the input to the encoder
     self.init_decoder_seq(example_list) # initialize the input and targets for the decoder
     self.store_orig_strings(example_list) # store the original strings
@@ -202,25 +206,44 @@ class Batcher(object):
     return batch
 
   def fill_example_queue(self):
-    input_gen = self.text_generator(data.example_generator(self._data_path, self._single_pass))
-
+    input_gen = self.text_generator(self._data_path, self._single_pass)
     while True:
-      try:
-        (article, abstract) = input_gen.__next__() # read the next example from file. article and abstract are both strings.
-      except StopIteration: # if there are no more examples:
-        tf.logging.info("The example generator for this example queue filling thread has exhausted data.")
-        if self._single_pass:
-          tf.logging.info("single_pass mode is on, so we've finished reading dataset. This thread is stopping.")
-          self._finished_reading = True
-          break
-        else:
-          raise Exception("single_pass mode is off but the example generator is out of data; error.")
-      # print(type(abstract_sentences))
-      # print(abstract_sentences)
-      # exit()
-      abstract_sentences = [sent.strip() for sent in data.abstract2sents(abstract)] # Use the <s> and </s> tags in abstract to get a list of sentences.
-      example = Example(article, abstract_sentences, self._vocab) # Process into an Example.
-      self._example_queue.put(example) # place the Example in the example queue.
+            try:
+                (article, abstract) = input_gen.__next__()
+            except StopIteration:  # if there are no more examples:
+                tf.logging.info(
+                    "The example generator for this example queue filling thread has exhausted data."
+                )
+                if self._single_pass:
+                    tf.logging.info(
+                        "single_pass mode is on, so we've finished reading dataset. This thread is stopping."
+                    )
+                    self._finished_reading = True
+                    break
+                else:
+                    raise Exception(
+                        "single_pass mode is off but the example generator is out of data; error."
+                    )
+            example = Example(article, abstract, self._vocab)  # Process into an Example.
+            self._example_queue.put(
+                example)  
+    # while True:
+    #   try:
+    #     (article, abstract) = input_gen.__next__() # read the next example from file. article and abstract are both strings.
+    #   except StopIteration: # if there are no more examples:
+    #     tf.logging.info("The example generator for this example queue filling thread has exhausted data.")
+    #     if self._single_pass:
+    #       tf.logging.info("single_pass mode is on, so we've finished reading dataset. This thread is stopping.")
+    #       self._finished_reading = True
+    #       break
+    #     else:
+    #       raise Exception("single_pass mode is off but the example generator is out of data; error.")
+    #   # print(type(abstract_sentences))
+    #   # print(abstract_sentences)
+    #   # exit()
+    #   abstract_sentences = [sent.strip() for sent in data.abstract2sents(abstract)] # Use the <s> and </s> tags in abstract to get a list of sentences.
+    #   example = Example(article, abstract_sentences, self._vocab) # Process into an Example.
+    #   self._example_queue.put(example) # place the Example in the example queue.
 
   def fill_batch_queue(self):
     while True:
@@ -268,21 +291,45 @@ class Batcher(object):
           new_t.start()
 
 
-  def text_generator(self, example_generator):
-    while True:
-      e = example_generator.__next__() # e is a tf.Example
-      try:
-        article_text = e.features.feature['article'].bytes_list.value[0] # the article text was saved under the key 'article' in the data files
-        abstract_text = e.features.feature['abstract'].bytes_list.value[0] # the abstract text was saved under the key 'abstract' in the data files
+  # def text_generator(self, example_generator):
+  #   while True:
+  #     e = example_generator.__next__() # e is a tf.Example
+  #     try:
+  #       article_text = e.features.feature['article'].bytes_list.value[0] # the article text was saved under the key 'article' in the data files
+  #       abstract_text = e.features.feature['abstract'].bytes_list.value[0] # the abstract text was saved under the key 'abstract' in the data files
+  #
+  #       article_text = str(article_text, encoding = 'utf-8')
+  #       abstract_text = str(abstract_text, encoding = 'utf-8')
+  #
+  #     except ValueError:
+  #       tf.logging.error('Failed to get article or abstract from example')
+  #       continue
+  #     if len(article_text)==0: # See https://github.com/abisee/pointer-generator/issues/1
+  #       #tf.logging.warning('Found an example with empty article text. Skipping it.')
+  #       continue
+  #     else:
+  #       yield (article_text, abstract_text)
+  def text_generator(self, data_path, single_pass):
+      """Generates article and abstract text from tf.Example.
 
-        article_text = str(article_text, encoding = 'utf-8')
-        abstract_text = str(abstract_text, encoding = 'utf-8') 
-        
-      except ValueError:
-        tf.logging.error('Failed to get article or abstract from example')
-        continue
-      if len(article_text)==0: # See https://github.com/abisee/pointer-generator/issues/1
-        #tf.logging.warning('Found an example with empty article text. Skipping it.')
-        continue
-      else:
-        yield (article_text, abstract_text)
+      Args:
+          data_path:
+          single_pass:
+      """
+      while True:
+          filelist = glob.glob(data_path)  # get the list of datafiles
+          assert filelist, ('Error: Empty filelist at %s' % data_path)
+          if single_pass:
+              filelist = sorted(filelist)
+          else:
+              random.shuffle(filelist)
+          for f in filelist:
+              with open(f) as train_f:
+                  for line in train_f:
+                      record = line.strip().split('\t\t')
+
+                      yield (record[0], record[1])
+                  #yield example_pb2.Example.FromString(example_str)
+          if single_pass:
+              print("text_generator completed reading all datafiles. No more data.")
+              break

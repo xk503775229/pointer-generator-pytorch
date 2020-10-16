@@ -72,7 +72,7 @@ def write_for_rouge(reference_sents, decoded_words, ex_index,
       fst_period_idx = len(decoded_words)
     sent = decoded_words[:fst_period_idx + 1]
     decoded_words = decoded_words[fst_period_idx + 1:]
-    decoded_sents.append(' '.join(sent))
+    decoded_sents.append(''.join(sent))
 
   # pyrouge calls a perl script that puts the data into HTML files.
   # Therefore we need to make our output HTML safe.
@@ -84,7 +84,7 @@ def write_for_rouge(reference_sents, decoded_words, ex_index,
 
   with open(ref_file, "w") as f:
     for idx, sent in enumerate(reference_sents):
-      f.write(sent) if idx == len(reference_sents) - 1 else f.write(sent + "\n")
+      f.write(sent) if idx == len(reference_sents) - 1 else f.write(sent)
   with open(decoded_file, "w") as f:
     for idx, sent in enumerate(decoded_sents):
       f.write(sent) if idx == len(decoded_sents) - 1 else f.write(sent + "\n")
